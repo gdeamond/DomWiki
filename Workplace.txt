@@ -1,0 +1,20 @@
+My workplace for programming DomWik:
+- VS Code + extensions:
+    - Better Comments,  
+    - C# for VS Code,
+    - C# XML Documentation Comments,
+    - GitHub Repositories,
+    - NuGet Package Manager GUI,
+    - Remote Repositories,
+    - ResXpress
+    - Git Project Management
+    - Markdownlint
+
+Extensions "Better Comments" has configured for next highlightings:
+    - "!" - red (high priority issue)
+    - "?" - orange (issue)
+    - "x " - grey strikethrough (reject)
+    - "+" - yellow (to be worked out)
+    - "*" - light-green (attention/information)
+    - "v " - bright-blue (approved, running)
+
