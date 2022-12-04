@@ -1,18 +1,18 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using System.Text;
 using DomWiki;
-using static DomWik.Handex;
+using static DomWiki.Handex;
 
 print("Hello, World!");
 Handex storage = new Handex(8);
 print(storage.BitWidth + ", " + storage.Count);
-list<ulong> addr = new List<ulong>();
-for each (string s {"hello", "world", "string"}){
+List<ulong> addr = new List<ulong>();
+foreach (string s in new string[]{"hello", "world", "string"}){
     addr.Add(storage.Add(s));
 }
 print("count: " + storage.Count);
 
-for each (ulong a in addr){
+foreach (ulong a in addr){
     print (a);
 };
 
