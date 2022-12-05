@@ -1,13 +1,6 @@
-/**
- * @ Author: Your name
- * @ Create Time: 2022-12-04 18:42:02
- * @ Modified by: Your name
- * @ Modified time: 2022-12-05 13:57:07
- * @ Description:
- */
 
 namespace DomWiki {
-    
+
     [Serializable]
     internal class Handex {
         /* 
@@ -56,8 +49,12 @@ namespace DomWiki {
 
         private static System.Data.HashFunction.Pearson.IPearson prs = System.Data.HashFunction.Pearson.PearsonFactory.Instance.Create();
 
+        /// <summary>
+        /// Splits ulong into two uints. Does not considers Big/Little Endian!
+        /// </summary>
+        /// <param name="value">The value to split.</param>
+        /// <returns>uint[] of two elements</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
-        
         unsafe public static uint[] SplitULong2UInts(ulong value){
             uint* x = (uint*)&value;
             uint* y = x+1;
@@ -65,6 +62,11 @@ namespace DomWiki {
             return new uint[]{*x, *(x+1)};
         }
 
+        /// <summary>
+        /// Splits long into two ints. Does not considers Big/Little Endian!
+        /// </summary>
+        /// <param name="value">The long value to split.</param>
+        /// <returns>int[] of two elements</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
         unsafe public static int[] SplitLong2Ints(long value){
             int* x = (int*)&value;
@@ -73,6 +75,12 @@ namespace DomWiki {
             return new int[]{*x, *(x+1)};
         }
 
+        /// <summary>
+        /// Combines two uints into one ulong. Does not considers Big/Little Endian!
+        /// </summary>
+        /// <param name="int1">The first uint to concatenate.</param>
+        /// <param name="int2">The second uint to concatenate.</param>
+        /// <returns>ulong</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
         unsafe public static ulong ConcatUInts2ULong(uint int1, uint int2){
             ulong res;
@@ -82,6 +90,12 @@ namespace DomWiki {
             return res;
         }
 
+        /// <summary>
+        /// Combines two ints into one long. Does not considers Big/Little Endian!
+        /// </summary>z
+        /// <param name="int1">The first int to concatenate.</param>
+        /// <param name="int2">The second int to concatenate.</param>
+        /// <returns>long</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
         unsafe public static long ConcatInts2Long(int int1, int int2){
             long res;
@@ -150,7 +164,7 @@ namespace DomWiki {
 #endregion 
 
         [NonSerialized] private const uint ARRAY_BIT_WIDTH = 10U; // starting size of array (1K elements), and width of handex (index in hash array)
-        [NonSerialized] private const uint SIGNATURE_MASK = 255U<<24;
+        // [NonSerialized] private const uint SIGNATURE_MASK = 255U<<24;
         private uint bitWidth, threshold, rowsCount, hashMask, subArraySize;
         private ulong countElements = 0; // counts all elements
         private ulong countEmpties = 0; // counts free indexes
