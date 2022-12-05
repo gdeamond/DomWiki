@@ -15,7 +15,7 @@ namespace DomWiki {
                 Address of element consists of 2 values: 1st - index of the row (handex, 8-32 bit), 2nd - index in the row (which should not be too large).
             It is very unbelievable to have row size > 2^24 (16M elements), so the most major 8 bits we will use for store additional information about the
             element: we will use it for signature - this can speedup search of elements by its values filtering list by signature. Signature is generated
-            as Pearson's hash. In case if the row size become > 2^(2+arrayBitWidth/2) [in other word - if fillness of Handex is going to "wide rectangle"],
+            as Pearson's hash. In case if the row size become > arrayBitWidth^2 [in other word - if fillness of Handex is going to "wide rectangle"],
             the storage can be enlarged.
                 Since hashes are stored as full 32-bit values, it's recalculation is not required, but just extend hashMask and run through all rows
             for move some elements to new rows. Of course we should be sure that all backlinks for moved elements still points to proper element.
@@ -32,8 +32,10 @@ namespace DomWiki {
             new row threshold will be calculated, additionally we expected that half of the elements from each row will move to newly created rows, and after
             what we expect that free indexes will appear in old rows.
             
-                One imprortant thing: since the Handex does not track backlinks, the only way to compress Handex (by removing empty or non-used fields)
-            is rebuild it from scratch.
+                Two imprortant thing:
+                1) since Handex does not track backlinks, the only way to optimize Handex (to remove empty or non-used fields)
+                    is rebuild it from scratch;
+                2) it is required to know the type of object you want to get from Handex.
             
                 How elements with same hash are stored:
             item | reference[][]          | address for reference
@@ -277,18 +279,23 @@ namespace DomWiki {
             countElements++;
             freeIndxs[0]++;
 
-            // check if there is required remap/enlarging of array
-            // +
+            
+            return ConcatUInts2ULong(row, newIndex);
+        }
+
+
+        // check if there is required remap/enlarging of array
+        // + provide parallel tasks for storage enlargement job
+        private void checkForEnlargement(uint row) {
             int upperBound = values[row].GetUpperBound(0);
-            if (newIndex >= upperBound){
-                if (newIndex >= (threshold-1)){
+            uint lastIndex = freexs[row][0];
+            if (lastIndex >= upperBound){
+                if (lastIndex >= (threshold-1)){
                     // row length achieved threshold, consider vertical enlargement
                     // + start Task for reorganize storage
 
                 } else {
-                    // row length is half of threshold => upgrade row length to threshold
-                    // + start Task for extend row
-
+                    // if (row length < threshold) upgrade row length to threshold
                     object[] newRow = new object[threshold];
                     Array.Copy(values[row], newRow, threshold);
                     byte[] newSgns = new byte[threshold];
@@ -297,11 +304,7 @@ namespace DomWiki {
                     signatures[row] = newSgns;
                 }
             }
-            return ConcatUInts2ULong(row, newIndex);
         }
-
-
-
 
         /// ? -----------------------------------------------------------------------------------------------------------------------------
         private void save(object? item, uint row, uint index, byte signature){
@@ -322,7 +325,7 @@ namespace DomWiki {
         /// ? -----------------------------------------------------------------------------------------------------------------------------
         private void setBitWidth(uint newBitWidth){
             bitWidth = newBitWidth;
-            threshold = (uint)Math.Pow(2,2+.5*bitWidth);
+            threshold = bitWidth*bitWidth;
             rowsCount = 2U<<(int)(bitWidth-1);
             hashMask = rowsCount-1;
             subArraySize = threshold>>1;

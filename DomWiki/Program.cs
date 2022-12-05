@@ -16,8 +16,8 @@ foreach (ulong a in addr){
     print (a);
 };
 
-print("addr of 'world': " + storage.Find("world"));
-print("addr of 'name': " + storage.Find("name"));
+print("addr: " + addr[0] + ", " + addr[1] + ", " + addr[2]);
+print((string)storage.Get(188) + ", " + (int)storage.Get(1));
 
 // uint[] hash(object o) => ComputeHash(o);
 
