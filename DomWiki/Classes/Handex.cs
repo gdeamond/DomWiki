@@ -1,6 +1,13 @@
+/**
+ * @ Author: Your name
+ * @ Create Time: 2022-12-04 18:42:02
+ * @ Modified by: Your name
+ * @ Modified time: 2022-12-05 13:57:07
+ * @ Description:
+ */
+
 namespace DomWiki {
     
-
     [Serializable]
     internal class Handex {
         /* 
@@ -50,6 +57,7 @@ namespace DomWiki {
         private static System.Data.HashFunction.Pearson.IPearson prs = System.Data.HashFunction.Pearson.PearsonFactory.Instance.Create();
 
         /// v -----------------------------------------------------------------------------------------------------------------------------
+        
         unsafe public static uint[] SplitULong2UInts(ulong value){
             uint* x = (uint*)&value;
             uint* y = x+1;
