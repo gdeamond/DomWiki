@@ -1,4 +1,6 @@
 namespace DomWiki {
+    
+
     [Serializable]
     internal class Handex {
         /* 
@@ -295,14 +297,19 @@ namespace DomWiki {
                     // + start Task for reorganize storage
 
                 } else {
-                    // if (row length < threshold) upgrade row length to threshold
-                    object[] newRow = new object[threshold];
-                    Array.Copy(values[row], newRow, threshold);
-                    byte[] newSgns = new byte[threshold];
-                    FastMath.fastCopy(signatures[row], newSgns, (int)threshold);
-                    values[row] = newRow;
-                    signatures[row] = newSgns;
+                    
                 }
+            }
+        }
+
+        private void setRowLength(uint row, uint length){
+            lock(values[row]){
+                object[] newRow = new object[length];
+                Array.Copy(values[row], newRow, length);
+                byte[] newSgns = new byte[length];
+                FastMath.fastCopy(signatures[row], newSgns, (int)length);
+                values[row] = newRow;
+                signatures[row] = newSgns;
             }
         }
 
