@@ -1,14 +1,15 @@
 My workplace for programming DomWik:
 - VS Code + extensions:
-    - Better Comments,  
-    - C# for VS Code,
-    - C# XML Documentation Comments,
-    - GitHub Repositories,
-    - NuGet Package Manager GUI,
-    - Remote Repositories,
-    - ResXpress
-    - Git Project Management
-    - Markdownlint
+    - C# (for VS Code)                      [Syntax Highlighting, IntelliSense, Go to Definition, Find All References, Debugging]
+    - NuGet Package Manager GUI             [obvious]
+    - Mintlify Doc Writer                   [select function and press Ctrl+'.' (or click pop-up message 'Generate dox')]
+    - auto-header                           [Ctrl+Alt+'I' to insert header block]
+    - Better Comments                       [provides colors for comments started from particular symbol, see description below]
+    - C# XML Documentation Comments         [type "///" for starting comment block]
+    - Automatic Comment Blocks (yCodeTech)  [type "/**" for starting comment block]
+    - ResXpress                             [previewer and reorganizer]
+    - Markdownlint                          [highlight and check when editing of .md files]
+    - GitGraph                              [visual representation of pull/push requests]
 
 Extensions "Better Comments" has configured for next highlightings:
     - "!" - red (high priority issue)

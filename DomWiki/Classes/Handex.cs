@@ -1,49 +1,78 @@
+/**
+ * @ Author: GDeamond
+ * @ Create Time: 2022-12-04 18:42:02
+ * @ Modified time: 2022-12-06 16:59:47
+ * @ Description: Class Handex organizes hash-table for storage and fast access to CONSTANT IMMUTABLE objects. The principle of this table is similar to 
+ *      internment of immutable strings in .NET platform. It can be helpful when required to download enormously large amount of like-textual data
+ *      and perform a lot of "find and match" operations.
+ */
 
 namespace DomWiki {
 
     [Serializable]
     internal class Handex {
-        /* 
-                Disadvantages of Generic Dictionary: - consumes a lot of memory (24+ bytes per item), - does not provide stable repeatable hashes for its keys,
-            - cannot keep more than 11M elements.
-                We use strong array of rows (arrays). This collection consumes a lot of memory at start (starting size), but when quantity of elements
-            increased, the part of starting size in a whole size of the storage become smaller:
-                    - Size 2^20 - is 1M empty elements at start, 8 MB of memory for references to Lists<string> on x64 systems.
-                    - Each string (as reference type) will add 8 bytes per element to infrastructure. In total the consumed memory for 1M elements
-                        will be 16+ bytes per item. But 8M elements consumes 9+ bytes per item what is acceptable.
-            
-                Since the search in sequential collections is performed linearly, we would not want the lists to be too large.
-            So there should be proper hash function with the most uniform distribution. We selected xxHash function (https://github.com/uranium62/xxHash).
-                Address of element consists of 2 values: 1st - index of the row (handex, 8-32 bit), 2nd - index in the row (which should not be too large).
-            It is very unbelievable to have row size > 2^24 (16M elements), so the most major 8 bits we will use for store additional information about the
-            element: we will use it for signature - this can speedup search of elements by its values filtering list by signature. Signature is generated
-            as Pearson's hash. In case if the row size become > arrayBitWidth^2 [in other word - if fillness of Handex is going to "wide rectangle"],
-            the storage can be enlarged.
-                Since hashes are stored as full 32-bit values, it's recalculation is not required, but just extend hashMask and run through all rows
-            for move some elements to new rows. Of course we should be sure that all backlinks for moved elements still points to proper element.
-            But this is solved by next logic:
-                - only half of elements will require movement to other rows; element with hash = 11110101 and storage bitWidth = 4 has handex = 0101; after the
-                    enlargement of bitWidth the new handex will be 10101 and address become +8, and this element should move to new row;
-                - but need to place them to the same index of new lists<> which they had in old lists<> — so we dont have to change backlinks at all;
-                - moving element to non-zero position of new list<> we have to track which fields are empty in that list - this is solved by organizing separate
-                    list of free indexes (what is unpleasant for memory consumption: in worth case the storage size increases twice in memory).
-                
-                The occupied memory can be increased in two ways: horizontally and vertically. At the very start all rows are initialized at half of their
-            threshold size. As soos as at least one row reaches it's initialized size (threshold/2), this particular row grows to threshold size - this is
-            horizontal enlargement. Next time when the fillness of at least one row reaches threshold, the vertical enlargement happens - new rows added and
-            new row threshold will be calculated, additionally we expected that half of the elements from each row will move to newly created rows, and after
-            what we expect that free indexes will appear in old rows.
-            
-                Two imprortant thing:
-                1) since Handex does not track backlinks, the only way to optimize Handex (to remove empty or non-used fields)
-                    is rebuild it from scratch;
-                2) it is required to know the type of object you want to get from Handex.
-            
-                How elements with same hash are stored:
-            item | reference[][]          | address for reference
-            : 1  | : [handex1][index1]    | = handex[32 bit] + signature1[8 bit] + index1[24 bit];
-            : 2  | : [handex1][index2]    | = handex[32 bit] + signature2[8 bit] + index2[24 bit];
+        /** 
+        *       Disadvantages of Generic Dictionary:
+        *           - consumes a lot of memory (additional 24 bytes per item! https://habr.com/ru/post/488836/),
+        *           - does not provide stable repeatable hashes for its keys (because of depending of hash on item's address in memory),
+        *           - cannot keep more than 2M elements.
+        *       Disadvantage of Handex:
+        *           - objects are immutable (changed object must be re-added and all backlinks to be updated; object's old version still stays there)
+        * 
+        *       We use strong array of rows (arrays) which consumes next amount of memory:
+        *           - less than 10 elements    : 24 - 100 additional bytes per element;
+        *           - from 10 to 100 elements  : 12 - 24 additional bytes per element;
+        *           - from 100 to 10K elements : 11 additional bytes per element;
+        *           - more than 10K elements   : 9 additional bytes per element;
+        *   
+        *       Since the search unsorted collections is performed linearly, we would not want the rows to be too large. We will split one big array into
+        *   small subArrays - rows which will have their address calculated from hash function of the object. Then we just need to perform linear search
+        *   in a small collection. Hash function must produce most uniform distribution. We selected xxHash function (https://github.com/uranium62/xxHash).
+        *       The address of the particular element consists of 2 parts:
+        *           1st - index OF the row (hash result "handex", 8-32 bit),
+        *           2nd - index INSIDE the row (which should not be too large, 8-24 bit).
+        *       Considering our hash is ideal, the row size should not exceed 2^24 (16M elements), so the most major 8 bits can be used for additional information
+        *   about the element - signature: in case if objects are to be changed the old backlink after checking of signature may be rejected (returned null object),
+        *   but such mechanism is very not reliable because there is at least 1/256 situaions where requested and stored signatures will match for different objects.
+        *   Signatures actually used in Handex for speedup search of elements in the rows as follows: first filtering is hash function, as result we get the array of
+        *   different objects. Instead of by sequential search we perform additional filtering by signatures what should increase search speed up to 8 times (because
+        *   we check 8 signatures per iteration using unsafe *(long*) ). Signatures are generated with Pearson's hash function.
+        *       
+        *       What if we need to enlarge the storage?
+        *       The occupied memory can be increased in two ways: "horizontally" and "vertically". At the very start all rows are initialized to half of their
+        *   threshold size. As soos as at least one row reaches it's initialized size (threshold/2), this particular row grows to threshold size - this is
+        *   "horizontal" enlargement.
+        *       When the fillness of at least one row reaches the threshold, the "vertical" enlargement happens - new rows added and new rows threshold to be
+        *   calculated (as arrayBitWidth^2), additionally we expected the half of elements should move to newly created rows.
+        *       Since hashes are stored as full 32-bit values, it's recalculation is not required, but just extend hashMask and run through all rows
+        *   for move some elements to new rows - all backlinks for moved elements still points to proper element:
+        *       - only that half of elements required movement to other rows which has hash & threhold > 0; element with hash = 11110101 and storage bitWidth = 4
+        *   has handex = 0101; after the enlargement of bitWidth the new handex will be 10101 and address become +8, so this element should move to new row;
+        *       - but need to place them to the same index of new lists<> which they had in old lists<> — so we provide proper work of backlink;
+        *       - when element is moved to non-zero position of just created new list<> we have to track empty fields in that list - this is solved by organizing
+        *   separate list of free indexes (what is unpleasant for memory consumption: in worst case the storage will be increased twice in memory after enlargement.
+        *       
+        *       Two imprortant things:
+        *       1) since Handex does not track backlinks, the only way to optimize Handex (to remove empty or non-used fields) is rebuild it from scratch;
+        *       2) it is required to know the type of object you want to get from Handex (because Handex returns "nullable object").
+        *   
         */
+
+        [NonSerialized] private const uint ARRAY_BIT_WIDTH = 10U; // starting size of array (1K elements), and width of handex (index in hash array)
+        // [NonSerialized] private const uint SIGNATURE_MASK = 255U<<<24;
+        private uint bitWidth, threshold, rowsCount, hashMask, subArraySize;
+        private ulong countElements = 0; // counts all elements
+        private ulong countEmpties = 0; // counts free indexes
+
+        private object[][] values; // stores objects except field [0][0] - address of this field means "null"
+        private byte[][] signatures; // stores Pearson's hashes of objects
+        private object[] locks; private object mainLock; // stores lockers for rows (one row to be blocked by one thread)
+       
+        private List<uint>[] freexs; // stores [0] - length of child array, [1...N] - free indexes (where 0 - not index)
+        
+
+        public ulong Count { get => countElements; }
+        public uint BitWidth { get => bitWidth; }
 
 #region #region StaticFunctions
 
@@ -163,20 +192,6 @@ namespace DomWiki {
 
 #endregion 
 
-        [NonSerialized] private const uint ARRAY_BIT_WIDTH = 10U; // starting size of array (1K elements), and width of handex (index in hash array)
-        // [NonSerialized] private const uint SIGNATURE_MASK = 255U<<24;
-        private uint bitWidth, threshold, rowsCount, hashMask, subArraySize;
-        private ulong countElements = 0; // counts all elements
-        private ulong countEmpties = 0; // counts free indexes
-
-        private object[][] values; // stores objects except field [0][0] - address of this field means "null"
-        private byte[][] signatures; // stores Pearson's hashes of objects
-        private List<uint>[] freexs; // stores [0] - length of child array, [1...N] - free indexes (where 0 - not index)
-        
-
-        public ulong Count { get => countElements; }
-        public uint BitWidth { get => bitWidth; }
-
         /// <summary>
         /// This class initializes array storage for indexed elements: the higher arrayBitWidth the faster searching of the element
         /// but the more memory will be consumed at start. Maximum arrayBitWidth is 31, minimum 8.
@@ -184,15 +199,17 @@ namespace DomWiki {
         /// <param name="arrayBitWidth">Sets the size of the top array and the width of hash codes</param>
         /// ? -----------------------------------------------------------------------------------------------------------------------------
         public Handex (uint arrayBitWidth = ARRAY_BIT_WIDTH){
-            if (arrayBitWidth<8) arrayBitWidth=8;
+            if (arrayBitWidth<8) arrayBitWidth = 8;
             if (arrayBitWidth>31) arrayBitWidth = 31;
 
-            setBitWidth(arrayBitWidth);
+            initializeWithBitWidth(arrayBitWidth);
 
             // create new instance
             values = new object[rowsCount][];
             signatures = new byte[rowsCount][];
             freexs = new List<uint>[rowsCount];
+            mainLock = new object();
+            locks = new object[rowsCount];
 
             // "add" null-object:
             // ?
@@ -201,13 +218,22 @@ namespace DomWiki {
             freexs[0][0]++; // fillness of the row
         }
 
+        /// ? -----------------------------------------------------------------------------------------------------------------------------
+        private void initializeWithBitWidth(uint newBitWidth){
+            bitWidth = newBitWidth;
+            threshold = bitWidth*bitWidth;
+            rowsCount = 2U<<(int)(bitWidth-1);
+            hashMask = rowsCount-1;
+            subArraySize = threshold>>1;
+        }
+
         /// <summary>
         /// Searches the storage for and <paramref name="item" /> object and returns its ulong address. If <paramref name="item" /> not found the returns 0.
         /// </summary>
         /// <param name="item">object to find</param>
         /// <returns>ulong address</returns>
         /// ? -----------------------------------------------------------------------------------------------------------------------------
-        public ulong Find(object? item){
+        unsafe public ulong Find(object? item){
             if (item is null) return 0;
 
             uint[] hash = ComputeHash(item);
@@ -216,21 +242,67 @@ namespace DomWiki {
                 byte sgn = (byte)hash[1]; // Hash Pearson's -> signature
             
             if (values[row] is null) return 0; // subArray absent
-            
-            uint size = freexs[row][0]; if (size==0) return 0;
-            byte[] sgns = signatures[row];
-            unsafe {
-                fixed(byte* start = &sgns[0]){
+            uint size = freexs[row][0]; if (size==0) return 0; //subArray is empty
+
+            byte[] signaturesRow = signatures[row];
+            object[] valuesRow = values[row];
+            if (size<16) { // method 1 "dumb"
+                // v ---------------------------------------------------------------------------------------------------
+                fixed(byte* start = signaturesRow){
                     byte* p = start;
                     uint index = 0;
                     if (row==0) { p+=1; index++; }
                     while (index<size){
-                        if (*p==sgn && item.Equals(values[row][index]))
+                        if (*p==sgn && item.Equals(valuesRow[index]))
                             return ConcatUInts2ULong(row, index);
                         p+=1; index++;
                     }
                 }
+            } else { // method 2 "filter by signature mask"
+                // ? ---------------------------------------------------------------------------------------------------
+
+                // build (ulong)signatureMask = sgn<<56 + sgn<<48 + sgn<<40 + sgn<<32 + sgn<<24 + sgn<<16 + sgn<<8 + sgn
+                ulong mask = 0;
+                uint* mint = (uint*)&mask + 1;
+                byte* m = (byte*)mint;
+                *m = sgn; *(m+1) = sgn; *(m+2) = sgn; *(m+3) = sgn;
+                *mint = *(uint*)m;
+
+                uint count = (uint)signaturesRow.GetUpperBound(0)+1;
+                uint index = 0;
+                List<uint> indexes = new List<uint>(32); // pre-allocated list
+                // run through signatures[row]: (ulong) slice XOR mask
+                fixed(byte* position = signaturesRow){
+                    byte* p = position;
+                    while (count>8){
+                        if ((*(ulong*)p ^ mask) != 0) { // if NZ(slice) {
+                            //    subslice = split2ints(slice): if NZ(subslice[0]) get index: if NZ(subslice[1]) get index
+                            if ((*(uint*)p ^ *mint)!=0) {
+                                if (*p == sgn) indexes.Add(index);
+                                if (*(p+1) == sgn) indexes.Add(index+1);
+                                if (*(p+2) == sgn) indexes.Add(index+2);
+                                if (*(p+3) == sgn) indexes.Add(index+3);
+                            }
+                            if ((*(uint*)(p+4) ^ *mint)!=0) {
+                                if (*(p+4) == sgn) indexes.Add(index+4);
+                                if (*(p+5) == sgn) indexes.Add(index+5);
+                                if (*(p+6) == sgn) indexes.Add(index+6);
+                                if (*(p+7) == sgn) indexes.Add(index+7);
+                            }
+                        }
+                        p += 8;
+                        count -= 8;
+                    }
+                    // work for last <8 elements
+                    for (; count>0; p++, index++, count--)
+                        if (*p == sgn) indexes.Add(index);
+                }
+                // run through found indexes[] in "dumb" way
+                for (int i=0; i<indexes.Count; i++)
+                    if (item.Equals(valuesRow[indexes[i]]))
+                        return ConcatUInts2ULong(row, indexes[i]);
             }
+
             return 0;
         }
 
@@ -259,7 +331,7 @@ namespace DomWiki {
         }
 
 
-        // +
+        // + make threadsafe
         public ulong Add(object? item){
             if (item is null) return 0;
 
@@ -276,7 +348,7 @@ namespace DomWiki {
             if (size>0) {
                 byte[] sgns = signatures[row];
                 unsafe {
-                    fixed(byte* start = &sgns[0]){
+                    fixed(byte* start = sgns){
                         byte* p = start;
                         uint index = 0;
                         if (row==0) { p+=1; index++; }
@@ -349,15 +421,6 @@ namespace DomWiki {
             values[handex] = new object[subArraySize];
             signatures[handex] = new byte[subArraySize];
             freexs[handex] = new List<uint>(){0};
-        }
-
-        /// ? -----------------------------------------------------------------------------------------------------------------------------
-        private void setBitWidth(uint newBitWidth){
-            bitWidth = newBitWidth;
-            threshold = bitWidth*bitWidth;
-            rowsCount = 2U<<(int)(bitWidth-1);
-            hashMask = rowsCount-1;
-            subArraySize = threshold>>1;
         }
 
     }
