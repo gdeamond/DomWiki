@@ -1,12 +1,14 @@
-/**
- * @ Author: GDeamond
- * @ Create Time: 2022-12-04 18:42:02
- * @ Modified time: 2022-12-06 16:59:47
- * @ Description: Class Handex organizes hash-table for storage and fast access to CONSTANT IMMUTABLE objects. The principle of this table is similar to 
- *      internment of immutable strings in .NET platform. It can be helpful when required to download enormously large amount of like-textual data
- *      and perform a lot of "find and match" operations.
- */
 
+
+using System.Runtime.CompilerServices;
+/**
+* @ Author: GDeamond
+* @ Create Time: 2022-12-04 18:42:02
+* @ Modified time: 2022-12-06 19:31:08
+* @ Description: Class Handex organizes hash-table for storage and fast access to CONSTANT IMMUTABLE objects. The principle of this table is similar to 
+*      internment of immutable strings in .NET platform. It can be helpful when required to download enormously large amount of like-textual data
+*      and perform a lot of "find and match" operations.
+*/
 namespace DomWiki {
 
     [Serializable]
@@ -56,19 +58,31 @@ namespace DomWiki {
         *       1) since Handex does not track backlinks, the only way to optimize Handex (to remove empty or non-used fields) is rebuild it from scratch;
         *       2) it is required to know the type of object you want to get from Handex (because Handex returns "nullable object").
         *   
+        *   + upgrade
+        *       There is possibility to provide mutability for stored objects. For this it will be need to create an additional reference-layer. This layer will
+        *   function as a broker providing proper reference to the object and refresh objects state inside the storage. All backlinks will be stored in
+        *   reference layer what will consume additional 8 bytes per object - however it is still less than Generic Dictionary. But it will be required
+        *   to call "update object" function for update internal reference between "broker" and actual field of the updated object, and also clear old reference.
+        *       Disadvantages:
+        *           - reduced access speed due to double referencing objects: instead of direct access to array (object=array[row][index]) there will be two steps
+        *       (object=broker[address]:array[row][index]) though it can still be enough fast. SpeedTests required.
         */
 
-        [NonSerialized] private const uint ARRAY_BIT_WIDTH = 10U; // starting size of array (1K elements), and width of handex (index in hash array)
+        [NonSerialized] private const uint ARRAY_BIT_WIDTH = 4U; // default size of array (256 elements), and width of handex
+        [NonSerialized] private const uint ARRAY_BIT_WIDTH_MIN = 4U; // minimum size of array
+        [NonSerialized] private const uint ARRAY_BIT_WIDTH_MAX = 31U; // maximum size of array (2E+12 elements), and width of handex
         // [NonSerialized] private const uint SIGNATURE_MASK = 255U<<<24;
-        private uint bitWidth, threshold, rowsCount, hashMask, subArraySize;
+        private uint bitWidth, thresholdRowSize, rowsCount, hashMask, initialRowSize;
         private ulong countElements = 0; // counts all elements
         private ulong countEmpties = 0; // counts free indexes
 
-        private object[][] values; // stores objects except field [0][0] - address of this field means "null"
-        private byte[][] signatures; // stores Pearson's hashes of objects
-        private object[] locks; private object mainLock; // stores lockers for rows (one row to be blocked by one thread)
+        private object[]?[]? values; // stores objects except field [0][0] - address of this field means "null"
+        private byte[]?[]? signatures; // stores Pearson's hashes
+        private object[]? locks; private object mainLock; // stores lockers for rows (one row to be blocked by one thread)
+        // + 
+        // private ulong[] broker; // broker provides for outside the static reference to object but keeps and updates object's address
        
-        private List<uint>[] freexs; // stores [0] - length of child array, [1...N] - free indexes (where 0 - not index)
+        private List<uint>[]? freexs; // stores [0] - length of child array, [1...N] - free indexes (where 0 - not index)
         
 
         public ulong Count { get => countElements; }
@@ -84,6 +98,7 @@ namespace DomWiki {
         /// <param name="value">The value to split.</param>
         /// <returns>uint[] of two elements</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         unsafe public static uint[] SplitULong2UInts(ulong value){
             uint* x = (uint*)&value;
             uint* y = x+1;
@@ -97,6 +112,7 @@ namespace DomWiki {
         /// <param name="value">The long value to split.</param>
         /// <returns>int[] of two elements</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         unsafe public static int[] SplitLong2Ints(long value){
             int* x = (int*)&value;
             int* y = x+1;
@@ -111,6 +127,7 @@ namespace DomWiki {
         /// <param name="int2">The second uint to concatenate.</param>
         /// <returns>ulong</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         unsafe public static ulong ConcatUInts2ULong(uint int1, uint int2){
             ulong res;
             uint* r = (uint*)&res;
@@ -126,6 +143,7 @@ namespace DomWiki {
         /// <param name="int2">The second int to concatenate.</param>
         /// <returns>long</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         unsafe public static long ConcatInts2Long(int int1, int int2){
             long res;
             int* r = (int*)&res;
@@ -176,6 +194,7 @@ namespace DomWiki {
         /// <param name="value">string</param>
         /// <returns>uint hash value</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint GetHashFromString(string value){
             return (Standart.Hash.xxHash.xxHash32.ComputeHash(value));
         }
@@ -186,6 +205,7 @@ namespace DomWiki {
         /// <param name="strm">stream</param>
         /// <returns>uint hash value</returns>
         /// v -----------------------------------------------------------------------------------------------------------------------------
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint GetHashFromStream(Stream strm){
             return (Standart.Hash.xxHash.xxHash32.ComputeHash(strm));
         }
@@ -202,29 +222,46 @@ namespace DomWiki {
             if (arrayBitWidth<8) arrayBitWidth = 8;
             if (arrayBitWidth>31) arrayBitWidth = 31;
 
-            initializeWithBitWidth(arrayBitWidth);
-
-            // create new instance
-            values = new object[rowsCount][];
-            signatures = new byte[rowsCount][];
-            freexs = new List<uint>[rowsCount];
             mainLock = new object();
-            locks = new object[rowsCount];
+            initializeWithBitWidth(arrayBitWidth);
 
             // "add" null-object:
             // ?
-            addRow(0);
+            initRow(0);
             save (null, 0, 0, 0);
-            freexs[0][0]++; // fillness of the row
+            freexs![0][0]++; // fillness of the row
         }
 
         /// ? -----------------------------------------------------------------------------------------------------------------------------
         private void initializeWithBitWidth(uint newBitWidth){
             bitWidth = newBitWidth;
-            threshold = bitWidth*bitWidth;
-            rowsCount = 2U<<(int)(bitWidth-1);
+            thresholdRowSize = bitWidth*bitWidth; // length of row at current bitWidth
+            rowsCount = 2U<<(int)(bitWidth-1); // = Math.Pow(2, bitWidth)
             hashMask = rowsCount-1;
-            subArraySize = threshold>>1;
+            initialRowSize = thresholdRowSize>>1; // initial row length
+
+            // create new instance:
+            values = new object[rowsCount][];
+            signatures = new byte[rowsCount][];
+            freexs = new List<uint>[rowsCount];
+            locks = new object[rowsCount];
+        }
+
+        /// ? -----------------------------------------------------------------------------------------------------------------------------
+        private void initRow(uint handex){
+            values![handex] = new object[initialRowSize];
+            signatures![handex] = new byte[initialRowSize];
+            freexs![handex] = new List<uint>(){0};
+            locks![handex] = new ReaderWriterLockSlim();
+        }
+
+        /// ? -----------------------------------------------------------------------------------------------------------------------------
+        private void save(object? item, uint row, uint index, byte signature){
+            // ensure row is exist and initialized for proper length, index should be < row length
+            #pragma warning disable CS8601
+            values![row]![index] = item;
+            #pragma warning restore CS8601
+            signatures![row]![index] = signature;
         }
 
         /// <summary>
@@ -232,7 +269,7 @@ namespace DomWiki {
         /// </summary>
         /// <param name="item">object to find</param>
         /// <returns>ulong address</returns>
-        /// ? -----------------------------------------------------------------------------------------------------------------------------
+        /// + add threadsafe operations -----------------------------------------------------------------------------------------------
         unsafe public ulong Find(object? item){
             if (item is null) return 0;
 
@@ -241,11 +278,13 @@ namespace DomWiki {
                 uint row = hs & hashMask; // Handex
                 byte sgn = (byte)hash[1]; // Hash Pearson's -> signature
             
-            if (values[row] is null) return 0; // subArray absent
-            uint size = freexs[row][0]; if (size==0) return 0; //subArray is empty
+            // + get lock for the row
+            object[] valuesRow = values![row]!;
 
-            byte[] signaturesRow = signatures[row];
-            object[] valuesRow = values[row];
+            if (valuesRow is null) return 0; // subArray absent
+            uint size = freexs![row][0]; if (size==0) return 0; //subArray is empty
+
+            byte[] signaturesRow = signatures![row]!;
             if (size<16) { // method 1 "dumb"
                 // v ---------------------------------------------------------------------------------------------------
                 fixed(byte* start = signaturesRow){
@@ -306,20 +345,22 @@ namespace DomWiki {
             return 0;
         }
 
+        // ? ----------------------------------------------
+        public object? this[ulong id]{
+            get {
+                if (id==0) return null;
+                uint[] uints = SplitULong2UInts(id);
+                uint row = uints[0];
+                uint index = uints[1];
+                //if (values[row] is null) return null;
+                //if (index>=freexs[row][0]) return null;
+                return values![row]?[index] ?? null;
+            }
+        }
+
         /// v -----------------------------------------------------------------------------------------------------------------------------
         public bool Contains(object item){
             return Find(item)>0;
-        }
-
-        /// ? -----------------------------------------------------------------------------------------------------------------------------
-        public object? Get(ulong address){
-            if (address==0) return null;
-            uint[] uints = SplitULong2UInts(address);
-            uint row = uints[0];
-            uint index = uints[1];
-            //if (values[row] is null) return null;
-            //if (index>=freexs[row][0]) return null;
-            return values[row]?[index] ?? null;
         }
 
         // +
@@ -340,20 +381,20 @@ namespace DomWiki {
                 uint row = hs & hashMask; // Handex
                 byte sgn = (byte)hash[1]; // Hash Pearson's -> signature
             
-            if (values[row] is null) addRow(row); // subArray absent
+            if (values![row] is null) initRow(row); // subArray absent
             
-            uint size = freexs[row][0];
+            uint size = freexs![row][0];
 
             // check if there is no same object
             if (size>0) {
-                byte[] sgns = signatures[row];
+                byte[] sgns = signatures![row]!;
                 unsafe {
                     fixed(byte* start = sgns){
                         byte* p = start;
                         uint index = 0;
                         if (row==0) { p+=1; index++; }
                         while (index<size){
-                            if (*p==sgn && item.Equals(values[row][index]))
+                            if (*p==sgn && item.Equals(values[row]![index]))
                                 return ConcatUInts2ULong(row, index);
                             p+=1; index++;
                         }
@@ -383,10 +424,10 @@ namespace DomWiki {
         // check if there is required remap/enlarging of array
         // + provide parallel tasks for storage enlargement job
         private void checkForEnlargement(uint row) {
-            int upperBound = values[row].GetUpperBound(0);
-            uint lastIndex = freexs[row][0];
+            int upperBound = values![row]!.GetUpperBound(0);
+            uint lastIndex = freexs![row][0];
             if (lastIndex >= upperBound){
-                if (lastIndex >= (threshold-1)){
+                if (lastIndex >= (thresholdRowSize-1)){
                     // row length achieved threshold, consider vertical enlargement
                     // + start Task for reorganize storage
 
@@ -397,30 +438,14 @@ namespace DomWiki {
         }
 
         private void setRowLength(uint row, uint length){
-            lock(values[row]){
+            // lock(values![row]!){
                 object[] newRow = new object[length];
-                Array.Copy(values[row], newRow, length);
+                Array.Copy(values![row]!, newRow, length);
                 byte[] newSgns = new byte[length];
-                FastMath.fastCopy(signatures[row], newSgns, (int)length);
+                FastMath.fastCopy(signatures![row]!, newSgns, (int)length);
                 values[row] = newRow;
                 signatures[row] = newSgns;
-            }
-        }
-
-        /// ? -----------------------------------------------------------------------------------------------------------------------------
-        private void save(object? item, uint row, uint index, byte signature){
-            // ensure row is exist and initialized for proper length, index should be < row length
-            #pragma warning disable CS8601
-            values[row][index] = item;
-            #pragma warning restore CS8601
-            signatures[row][index] = signature;
-        }
-
-        /// ? -----------------------------------------------------------------------------------------------------------------------------
-        private void addRow(uint handex){
-            values[handex] = new object[subArraySize];
-            signatures[handex] = new byte[subArraySize];
-            freexs[handex] = new List<uint>(){0};
+            
         }
 
     }
