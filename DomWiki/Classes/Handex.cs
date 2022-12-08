@@ -48,11 +48,11 @@ namespace DomWiki {
         *   calculated (as arrayBitWidth^2), additionally we expected the half of elements should move to newly created rows.
         *       Since hashes are stored as full 32-bit values, it's recalculation is not required, but just extend hashMask and run through all rows
         *   for move some elements to new rows - all backlinks for moved elements still points to proper element:
-        *       - only that half of elements required movement to other rows which has hash & threhold > 0; element with hash = 11110101 and storage bitWidth = 4
-        *   has handex = 0101; after the enlargement of bitWidth the new handex will be 10101 and address become +8, so this element should move to new row;
-        *       - but need to place them to the same index of new lists<> which they had in old lists<> — so we provide proper work of backlink;
-        *       - when element is moved to non-zero position of just created new list<> we have to track empty fields in that list - this is solved by organizing
-        *   separate list of free indexes (what is unpleasant for memory consumption: in worst case the storage will be increased twice in memory after enlargement.
+        *           - only that half of elements required movement to other rows which has hash & threhold > 0; element with hash = 11110101 and storage bitWidth = 4
+        *               has handex = 0101; after the enlargement of bitWidth the new handex will be 10101 and address become +8, so this element should move to new row;
+        *           - but need to place them to the same index of new lists<> which they had in old lists<> — so we provide proper work of backlink;
+        *           - when element is moved to non-zero position of just created new list<> we have to track empty fields in that list - this is solved by organizing
+        *               separate list of free indexes (what is unpleasant for memory consumption: in worst case the storage will be increased twice in memory after enlargement.
         *       
         *       Two imprortant things:
         *       1) since Handex does not track backlinks, the only way to optimize Handex (to remove empty or non-used fields) is rebuild it from scratch;
@@ -65,7 +65,9 @@ namespace DomWiki {
         *   to call "update object" function for update internal reference between "broker" and actual field of the updated object, and also clear old reference.
         *       Disadvantages:
         *           - reduced access speed due to double referencing objects: instead of direct access to array (object=array[row][index]) there will be two steps
-        *       (object=broker[address]:array[row][index]) though it can still be enough fast. SpeedTests required.
+        *               (object=broker[address]:array[row][index]) though it can still be enough fast. SpeedTests required.
+        *       Solution:
+        *           - create super-class implementing or internally using the Handex
         */
 
         [NonSerialized] private const uint ARRAY_BIT_WIDTH = 4U; // default size of array (256 elements), and width of handex
@@ -219,8 +221,8 @@ namespace DomWiki {
         /// <param name="arrayBitWidth">Sets the size of the top array and the width of hash codes</param>
         /// ? -----------------------------------------------------------------------------------------------------------------------------
         public Handex (uint arrayBitWidth = ARRAY_BIT_WIDTH){
-            if (arrayBitWidth<8) arrayBitWidth = 8;
-            if (arrayBitWidth>31) arrayBitWidth = 31;
+            if (arrayBitWidth<8) arrayBitWidth = ARRAY_BIT_WIDTH_MIN;
+            if (arrayBitWidth>31) arrayBitWidth = ARRAY_BIT_WIDTH_MAX;
 
             mainLock = new object();
             initializeWithBitWidth(arrayBitWidth);
