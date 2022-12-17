@@ -5,9 +5,10 @@ using System.Runtime.CompilerServices;
 * @ Author: GDeamond
 * @ Create Time: 2022-12-04 18:42:02
 * @ Modified time: 2022-12-06 19:31:08
-* @ Description: Class Handex organizes hash-table for storage and fast access to CONSTANT IMMUTABLE objects. The principle of this table is similar to 
-*      internment of immutable strings in .NET platform. It can be helpful when required to download enormously large amount of like-textual data
-*      and perform a lot of "find and match" operations.
+* @ Description: Class Handex organizes hash-table for storage and fast access
+*       to CONSTANT IMMUTABLE objects. The principle of this table is similar to 
+*       internment of immutable strings in .NET platform. It can be helpful when
+*       required to download enormously large amount of like-textual data.
 */
 namespace DomWiki {
 
@@ -81,16 +82,13 @@ namespace DomWiki {
         private object[]?[]? values; // stores objects except field [0][0] - address of this field means "null"
         private byte[]?[]? signatures; // stores Pearson's hashes
         private object[]? locks; private object mainLock; // stores lockers for rows (one row to be blocked by one thread)
-        // + 
-        // private ulong[] broker; // broker provides for outside the static reference to object but keeps and updates object's address
        
         private List<uint>[]? freexs; // stores [0] - length of child array, [1...N] - free indexes (where 0 - not index)
-        
 
         public ulong Count { get => countElements; }
         public uint BitWidth { get => bitWidth; }
 
-#region #region StaticFunctions
+#region StaticFunctions
 
         private static System.Data.HashFunction.Pearson.IPearson prs = System.Data.HashFunction.Pearson.PearsonFactory.Instance.Create();
 
@@ -190,6 +188,7 @@ namespace DomWiki {
             return new uint[]{hs, hp};
         }
         
+
         /// <summary>
         /// Returns xxHash() from string <paramref name="value" />
         /// </summary>
