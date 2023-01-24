@@ -1,6 +1,3 @@
-
-
-using System.Runtime.CompilerServices;
 /**
 * @ Author: GDeamond
 * @ Create Time: 2022-12-04 18:42:02
@@ -9,6 +6,8 @@ using System.Runtime.CompilerServices;
 *      internment of immutable strings in .NET platform. It can be helpful when required to download enormously large amount of like-textual data
 *      and perform a lot of "find and match" operations.
 */
+
+using System.Runtime.CompilerServices;
 namespace DomWiki {
 
     [Serializable]
@@ -52,15 +51,15 @@ namespace DomWiki {
         *               has handex = 0101; after the enlargement of bitWidth the new handex will be 10101 and address become +8, so this element should move to new row;
         *           - but need to place them to the same index of new lists<> which they had in old lists<> — so we provide proper work of backlink;
         *           - when element is moved to non-zero position of just created new list<> we have to track empty fields in that list - this is solved by organizing
-        *               separate list of free indexes (what is unpleasant for memory consumption: in worst case the storage will be increased twice in memory after enlargement.
+        *               separate list of free indexes (what is unpleasant) for memory consumption: in worst case the storage will be increased twice in memory after enlargement.
         *       
         *       Two imprortant things:
         *       1) since Handex does not track backlinks, the only way to optimize Handex (to remove empty or non-used fields) is rebuild it from scratch;
         *       2) it is required to know the type of object you want to get from Handex (because Handex returns "nullable object").
         *   
-        *   + upgrade
-        *       There is possibility to provide mutability for stored objects. For this it will be need to create an additional reference-layer. This layer will
-        *   function as a broker providing proper reference to the object and refresh objects state inside the storage. All backlinks will be stored in
+        *   + upgrade: provide mutability of stored objects
+        *       There is possibility to provide mutability for stored objects. Will be need to create an additional reference-layer (another 8 bytes per item). This layer will
+        *   function as a broker providing proper reference to the object and refreshing objects state inside the storage. All backlinks will be stored in
         *   reference layer what will consume additional 8 bytes per object - however it is still less than Generic Dictionary. But it will be required
         *   to call "update object" function for update internal reference between "broker" and actual field of the updated object, and also clear old reference.
         *       Disadvantages:
@@ -68,6 +67,9 @@ namespace DomWiki {
         *               (object=broker[address]:array[row][index]) though it can still be enough fast. SpeedTests required.
         *       Solution:
         *           - create super-class implementing or internally using the Handex
+        * 
+        *   + upgrade: provide thread-safe access to storage
+        *       Thread safe access will require locker object per each row. One thread may block one row.
         */
 
         [NonSerialized] private const uint ARRAY_BIT_WIDTH = 4U; // default size of array (256 elements), and width of handex
